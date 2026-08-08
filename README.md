@@ -110,6 +110,10 @@ pip install -r requirements.txt
 # regenerate all four figures (~1 min)
 python -m experiments.make_figures
 
+# run the tests
+pip install -r requirements-dev.txt
+pytest -q
+
 # or poke at the pieces directly
 python - <<'PY'
 from fcue.world import World, WorldConfig
@@ -137,6 +141,8 @@ PY
 | [`fcue/baselines.py`](fcue/baselines.py) | Propensity model + uplift-curve tooling | *why* uplift beats propensity, measurably |
 | [`fcue/simulation.py`](fcue/simulation.py) | Experiment engine (4 experiments) | ties the loop together, scores policies |
 | [`experiments/make_figures.py`](experiments/make_figures.py) | Renders the 4 charts | — |
+| [`browser_demo/`](browser_demo/) | Real Shared Storage + Private Aggregation edge logic (Chrome) | the actual Privacy Sandbox APIs the sim models |
+| [`tests/`](tests/) | pytest suite | DP unbiasedness, policy recovery, the coupling knob |
 
 Full jargon-to-code map: **[docs/CONCEPTS.md](docs/CONCEPTS.md)**.
 
