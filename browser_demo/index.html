@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FCUE — real Privacy Sandbox edge demo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.6 system-ui, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; }
+  code, pre { font-family: ui-monospace, monospace; }
+  pre { background: color-mix(in srgb, currentColor 8%, transparent); padding: .75rem 1rem; border-radius: 8px; overflow-x: auto; }
+  button { font-size: 1rem; padding: .5rem 1rem; border-radius: 8px; cursor: pointer; margin: .25rem .5rem .25rem 0; }
+  #log { white-space: pre-wrap; }
+  .warn { padding: .75rem 1rem; border-left: 4px solid #d1242f; background: color-mix(in srgb, #d1242f 10%, transparent); border-radius: 4px; }
+  .ok { color: #1a7f37; } .bad { color: #d1242f; }
+</style>
+</head>
+<body>
+<h1>FCUE — edge decision on the real Privacy Sandbox APIs</h1>
+
+<p>This page runs the FCUE edge logic against the <em>actual</em> browser
+<strong>Shared Storage</strong> + <strong>Private Aggregation</strong> APIs — the
+same flow the Python simulation models. The decision (which coupon?) happens inside
+a sandboxed worklet that can read the user's local context but cannot phone home;
+only a noisy, aggregated histogram ever leaves the device.</p>
+
+<div class="warn">
+<strong>Requirements to actually run.</strong> These APIs are Chrome-only and gated.
+You need a recent Chrome with the Privacy Sandbox Ads APIs enabled
+(<code>chrome://settings/adPrivacy</code>, or launch with the relevant
+<code>--enable-features</code> flags), served over <code>https</code> or
+<code>http://localhost</code>. Contributions are <em>batched and delayed</em> and
+sent to a Trusted Execution Environment, so you will NOT see immediate output here —
+inspect queued reports at <code>chrome://private-aggregation-internals</code>. If your
+browser lacks support, the buttons below will say so instead of erroring.
+</div>
+
+<p>
+  <button id="decide">1 — Run edge decision</button>
+  <button id="convert">2 — Simulate a conversion</button>
+</p>
+<pre id="log">(ready)</pre>
+
+<h2>What maps to what</h2>
+<pre>
+browser_demo/fcue-worklet.js   ⇄   fcue/bandit.py   (Thompson assign, aggregate_counts)
+                               ⇄   fcue/privacy.py  (contributeToHistogram = the report step)
+this page's set() calls        ⇄   "downloaded global weights" broadcast to the edge
+chrome://private-aggregation-internals   ⇄   the noisy summary reports the server would batch
+</pre>
+
+<script>
+const log = (msg, cls) => {
+  const el = document.getElementById('log');
+  el.textContent += `\n${msg}`;
+  if (cls) el.lastChild; // no-op; keep simple
+};
+
+const supported = 'sharedStorage' in window &&
+  window.sharedStorage && typeof window.sharedStorage.run === 'function';
+
+if (!supported) {
+  document.getElementById('log').textContent =
+    '❌ This browser does not expose window.sharedStorage.run — Privacy Sandbox ' +
+    'APIs are unavailable or disabled. The code is still valid; enable the flags ' +
+    'above (or read fcue-worklet.js) to see the real API usage.';
+  document.querySelectorAll('button').forEach(b => (b.disabled = true));
+}
+
+// Example "downloaded" global model weights: Beta(alpha, beta) per cluster per arm.
+// Arm 1 (treat) looks better in clusters 0,1,4,5 — the sim's learned policy.
+const WEIGHTS = { alpha: [], beta: [] };
+for (let k = 0; k < 8; k++) {
+  const treatGood = [0, 1, 4, 5].includes(k);
+  WEIGHTS.alpha.push([120, treatGood ? 150 : 90]);   // ~purchases per (cluster, arm)
+  WEIGHTS.beta.push([880, treatGood ? 850 : 910]);   // ~non-purchases
+}
+
+async function ensureModule() {
+  if (!window.__fcueModuleAdded) {
+    await window.sharedStorage.worklet.addModule('fcue-worklet.js');
+    window.__fcueModuleAdded = true;
+    log('✓ worklet module loaded');
+  }
+}
+
+document.getElementById('decide').addEventListener('click', async () => {
+  try {
+    await ensureModule();
+    // Write private context + downloaded weights into Shared Storage (write is
+    // allowed from the page; reads happen only inside the worklet).
+    const features = [Math.random(), Math.random(), Math.random()];
+    await window.sharedStorage.set('fcue_features', JSON.stringify(features));
+    await window.sharedStorage.set('fcue_weights', JSON.stringify(WEIGHTS));
+    await window.sharedStorage.run('fcue-decision', { data: {}, keepAlive: true });
+    log(`✓ ran fcue-decision for features [${features.map(f => f.toFixed(2)).join(', ')}] ` +
+        `— an EXPOSURE contribution was queued (see private-aggregation-internals)`);
+  } catch (e) {
+    log(`❌ ${e.name}: ${e.message}`);
+  }
+});
+
+document.getElementById('convert').addEventListener('click', async () => {
+  try {
+    await ensureModule();
+    await window.sharedStorage.run('fcue-conversion', { data: {}, keepAlive: true });
+    log('✓ ran fcue-conversion — a PURCHASE contribution was queued for the same (cluster, arm)');
+  } catch (e) {
+    log(`❌ ${e.name}: ${e.message}`);
+  }
+});
+</script>
+</body>
+</html>

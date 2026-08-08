@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json
+
+# Generated figures are committed on purpose (they're in the README); if you'd
+# rather regenerate them, uncomment:
+# experiments/figures/
